@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shopping/data/categories.dart';
 import 'package:shopping/models/category.dart';
+import 'package:http/http.dart' as http;
 import 'package:shopping/models/grocery_item.dart';
 
 class NewItem extends StatefulWidget {
@@ -12,31 +15,43 @@ class NewItem extends StatefulWidget {
 
 class _NewItemState extends State<NewItem> {
   final _formKey = GlobalKey<FormState>();
-  final _enteredName = TextEditingController();
-  final _enteredQuantity = TextEditingController();
+  var _enteredName = '';
+  var _enteredQuantity = 1;
   var _selectedCategory = categories[Categories.vegetables]!;
+  var _isSending = false;
 
-  void _saveItem() {
+  void _saveItem() async {
     if (_formKey.currentState!.validate()) {
-      final enteredAmount = int.tryParse(_enteredQuantity.text);
       _formKey.currentState!.save();
+      setState(() {
+        _isSending = true;
+      });
+      final url = Uri.https(
+          'flutter-shopping-app-35bcc-default-rtdb.firebaseio.com',
+          'shopping-List.json');
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': _enteredName,
+          'quantity': _enteredQuantity,
+          'category': _selectedCategory.title,
+        }),
+      );
+      final Map<String, dynamic> resData = json.decode(response.body);
+
+      if (!context.mounted) {
+        return;
+      }
       Navigator.of(context).pop(GroceryItem(
-          id: DateTime.now().toString(),
-          name: _enteredName.text,
-          quantity: enteredAmount!,
-          category: _selectedCategory,
-          )
-        );
+          id: resData['name'],
+          name: _enteredName,
+          quantity: _enteredQuantity,
+          category: _selectedCategory));
     }
   }
-
-   @override
-  void dispose() {
-    _enteredName.dispose();
-    _enteredQuantity.dispose();
-    super.dispose();
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +80,7 @@ class _NewItemState extends State<NewItem> {
                       return null;
                     },
                     onSaved: (value) {
-                      _enteredName.text = value!;
+                      _enteredName = value!;
                     },
                   ),
                   Row(
@@ -77,7 +92,7 @@ class _NewItemState extends State<NewItem> {
                             label: Text('Quantity'),
                           ),
                           keyboardType: TextInputType.number,
-                          controller: _enteredQuantity,
+                          initialValue: _enteredQuantity.toString(),
                           validator: (value) {
                             if (value == null ||
                                 value.isEmpty ||
@@ -88,7 +103,7 @@ class _NewItemState extends State<NewItem> {
                             return null;
                           },
                           onSaved: (value) {
-                           _enteredQuantity.text = value!;
+                            _enteredQuantity = int.parse(value!);
                           },
                         ),
                       ),
@@ -127,12 +142,16 @@ class _NewItemState extends State<NewItem> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton(
-                          onPressed: () {
+                          onPressed: _isSending ? null : () {
                             _formKey.currentState!.reset();
                           },
                           child: Text('Reset')),
                       ElevatedButton(
-                          onPressed: _saveItem, child: Text('add item'))
+                        onPressed: _isSending? null : _saveItem, 
+                        child: _isSending? 
+                        SizedBox(height: 16, width: 16,child: CircularProgressIndicator())
+                        : const Text('Add Item'),
+                      ),
                     ],
                   )
                 ],
